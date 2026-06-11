@@ -61,6 +61,28 @@ const (
 	KindTypeOperator                = ast.KindTypeOperator
 	KindParenthesizedType           = ast.KindParenthesizedType
 	KindQualifiedName               = ast.KindQualifiedName
+	KindComputedPropertyName        = ast.KindComputedPropertyName
+	KindStringKeyword               = ast.KindStringKeyword
+	KindNumberKeyword               = ast.KindNumberKeyword
+	KindBooleanKeyword              = ast.KindBooleanKeyword
+	KindObjectKeyword               = ast.KindObjectKeyword
+	KindAnyKeyword                  = ast.KindAnyKeyword
+	KindUnknownKeyword              = ast.KindUnknownKeyword
+	KindVariableStatement           = ast.KindVariableStatement
+	KindVariableDeclaration         = ast.KindVariableDeclaration
+	KindReadonlyKeyword             = ast.KindReadonlyKeyword
+	KindQuestionToken               = ast.KindQuestionToken
+)
+
+// Symbol flags the schema walker matches on.
+const (
+	SymbolFlagsAlias       = ast.SymbolFlagsAlias
+	SymbolFlagsClass       = ast.SymbolFlagsClass
+	SymbolFlagsInterface   = ast.SymbolFlagsInterface
+	SymbolFlagsEnum        = ast.SymbolFlagsEnum
+	SymbolFlagsRegularEnum = ast.SymbolFlagsRegularEnum
+	SymbolFlagsTypeAlias   = ast.SymbolFlagsTypeAlias
+	SymbolFlagsEnumMember  = ast.SymbolFlagsEnumMember
 )
 
 // Modifier flags the schema walker matches on.

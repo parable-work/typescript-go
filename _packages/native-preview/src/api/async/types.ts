@@ -1,9 +1,13 @@
+import type { CompletionItemKind } from "#enums/completionItemKind";
 import type { DiagnosticCategory } from "#enums/diagnosticCategory";
 import type { ElementFlags } from "#enums/elementFlags";
 import type { ObjectFlags } from "#enums/objectFlags";
 import type { TypeFlags } from "#enums/typeFlags";
 import type { TypePredicateKind } from "#enums/typePredicateKind";
-import type { Symbol } from "./api.ts";
+import type {
+    NodeHandle,
+    Symbol,
+} from "./api.ts";
 
 /**
  * A TypeScript type.
@@ -13,7 +17,7 @@ import type { Symbol } from "./api.ts";
  *
  * ```ts
  * if (type.flags & TypeFlags.StringLiteral) {
- *     console.log((type as LiteralType).value); // string
+ *     console.log((type as StringLiteralType).value); // string
  * }
  * ```
  */
@@ -45,8 +49,32 @@ export interface FreshableType extends Type {
 
 /** Literal types: StringLiteral, NumberLiteral, BigIntLiteral, BooleanLiteral */
 export interface LiteralType extends FreshableType {
-    /** The literal value */
-    readonly value: string | number | boolean;
+    /** The literal value. Use TypeFlags to narrow to a specific literal subtype with a concrete value type. */
+    readonly value: string | number | boolean | bigint;
+}
+
+/** String literal types (TypeFlags.StringLiteral) */
+export interface StringLiteralType extends LiteralType {
+    /** The string value of the literal */
+    readonly value: string;
+}
+
+/** Numeric literal types (TypeFlags.NumberLiteral) */
+export interface NumberLiteralType extends LiteralType {
+    /** The numeric value of the literal */
+    readonly value: number;
+}
+
+/** BigInt literal types (TypeFlags.BigIntLiteral) */
+export interface BigIntLiteralType extends LiteralType {
+    /** The bigint value of the literal */
+    readonly value: bigint;
+}
+
+/** Boolean literal types (TypeFlags.BooleanLiteral) */
+export interface BooleanLiteralType extends LiteralType {
+    /** The boolean value of the literal */
+    readonly value: boolean;
 }
 
 /** Object types (TypeFlags.Object) */
@@ -198,6 +226,39 @@ export interface IndexInfo {
     readonly valueType: Type;
     /** Whether the index signature is readonly */
     readonly isReadonly: boolean;
+    /** The index signature declaration, if any */
+    readonly declaration?: NodeHandle;
+}
+
+export interface CompletionEntryLabelDetails {
+    detail?: string;
+    description?: string;
+}
+
+/** Options for {@link Checker.getCompletionsAtPosition}. */
+export interface CompletionOptions {
+    triggerCharacter?: string;
+    /** Include a `symbol` property on each completion entry. Only populated for symbol-based completions (not keywords or literals). */
+    includeSymbol?: boolean;
+}
+
+/** A single completion item returned by {@link Checker.getCompletionsAtPosition}. */
+export interface CompletionEntry {
+    readonly name: string;
+    readonly kind?: CompletionItemKind;
+    readonly sortText?: string;
+    readonly insertText?: string;
+    readonly filterText?: string;
+    readonly detail?: string;
+    readonly labelDetails?: CompletionEntryLabelDetails;
+    /** The symbol associated with this completion entry. Only set when `includeSymbol: true` is passed and a symbol is available. */
+    readonly symbol?: Symbol;
+}
+
+/** The result of {@link Checker.getCompletionsAtPosition}. */
+export interface CompletionInfo {
+    readonly isIncomplete: boolean;
+    readonly entries: readonly CompletionEntry[];
 }
 
 /**

@@ -1,3 +1,4 @@
+import type { CompletionItemKind } from "#enums/completionItemKind";
 import {
     documentURIToFileName,
     fileNameToDocumentURI,
@@ -133,13 +134,16 @@ export interface SymbolResponse {
     checkFlags: number;
     declarations?: string[];
     valueDeclaration?: string;
+    parent?: number;
+    exportSymbol?: number;
 }
 
 export interface TypeResponse {
     id: number;
     flags: number;
     objectFlags?: number;
-    value?: string | number | boolean;
+    /** Literal value. BigInt literals are encoded as a decimal string (e.g. "-123") since JSON cannot represent bigint. Absent values are serialized as null. */
+    value?: string | number | boolean | null;
     freshType?: number;
     regularType?: number;
     target?: number;
@@ -184,6 +188,7 @@ export interface IndexInfoResponse {
     keyType: TypeResponse;
     valueType: TypeResponse;
     isReadonly?: boolean;
+    declaration?: string;
 }
 
 export interface ProfileParams {
@@ -192,4 +197,25 @@ export interface ProfileParams {
 
 export interface ProfileResult {
     file: string;
+}
+
+export interface CompletionEntryLabelDetailsResponse {
+    detail?: string;
+    description?: string;
+}
+
+export interface CompletionEntryResponse {
+    name: string;
+    kind?: CompletionItemKind;
+    sortText?: string;
+    insertText?: string;
+    filterText?: string;
+    detail?: string;
+    labelDetails?: CompletionEntryLabelDetailsResponse;
+    symbol?: SymbolResponse;
+}
+
+export interface CompletionInfoResponse {
+    isIncomplete: boolean;
+    entries: CompletionEntryResponse[];
 }

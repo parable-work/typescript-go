@@ -55,8 +55,22 @@ function tsInterfaceMembers(node: NodeType): MemberInfo[] {
 // TS-specific naming and typing
 // ────────────────────────────────────────────────────────────────────────────
 
-function tsParamTypeFrom(type: Type): string {
-    return type.kind === "list" ? type.raw().formatTypeScript() : type.formatTypeScript();
+// The JSDoc comment `text` member is stored as a raw []string in Go, but the
+// encoder joins it into a single string and both the RemoteNode API and the
+// local factory expose it as a scalar string. Collapse just this member to its
+// element type in the generated TS. This is intentionally keyed on the property
+// name rather than on "raw list of a primitive" so the exception stays narrow
+// and explicit; `text` is the only such member.
+function collapsedTextType(name: string, type: Type): string | undefined {
+    if (name === "text" && type.kind === "list" && type.listKind === "raw") {
+        return type.elementType.formatTypeScript();
+    }
+    return undefined;
+}
+
+function tsParamTypeFrom(name: string, type: Type): string {
+    return collapsedTextType(name, type)
+        ?? (type.kind === "list" ? type.raw().formatTypeScript() : type.formatTypeScript());
 }
 
 function tsParamName(propName: string): string {
@@ -146,7 +160,7 @@ function generateBaseFields(base: NodeType): string {
     for (const field of base.fields) {
         if (field.noTS) continue;
         const name = api.uncapitalize(field.name);
-        const type = field.type.formatTypeScript();
+        const type = collapsedTextType(field.name, field.type) ?? field.type.formatTypeScript();
         const opt = field.optional ? "?" : "";
         result += `\n    readonly ${name}${opt}: ${type};`;
     }
@@ -485,7 +499,7 @@ function generateFactory(): string {
         const kindTypeParam = kindTypeParameter(node);
         if (kindTypeParam) addType(kindTypeParam.constraint);
         for (const m of tsMembers(node)) {
-            addType(tsParamTypeFrom(m.type));
+            addType(tsParamTypeFrom(m.name, m.type));
             addType(m.type.formatTypeScript());
         }
     }
@@ -499,6 +513,9 @@ function generateFactory(): string {
     for (const t of ["Node", "NodeArray", "KeywordTypeSyntaxKind", "Token", "SourceFile", "KeywordTypeNode", "EndOfFile", "ImportPhaseModifierSyntaxKind", "Path", "Statement"]) {
         importTypes.add(t);
     }
+    const handWrittenCloneHelpers = api.nodes()
+        .filter(node => node.handWritten && !isVariantNode(node))
+        .map(node => ({ node, helperName: `clone${node.name}Data` }));
     // Remove enum types that are imported separately
     importTypes.delete("NodeFlags");
     importTypes.delete("SyntaxKind");
@@ -518,6 +535,13 @@ function generateFactory(): string {
     }
     out.push(`} from "./ast.ts";`);
     out.push(`import { getTokenPosOfNode } from "./astnav.ts";`);
+    if (handWrittenCloneHelpers.length > 0) {
+        out.push(`import {`);
+        for (const helperName of [...new Set(handWrittenCloneHelpers.map(h => h.helperName))].sort((a, b) => a.localeCompare(b))) {
+            out.push(`    ${helperName},`);
+        }
+        out.push(`} from "./utils.ts";`);
+    }
 
     // Import hand-written forEachChild functions
     const handWrittenForEachChildImports: string[] = [];
@@ -660,9 +684,12 @@ function generateFactory(): string {
         out.push(`        case SyntaxKind.${v.syntaxKind}:`);
         out.push(`            return { ${propStr} };`);
     }
-    // SourceFile is handWritten so we add its case manually
-    out.push(`        case SyntaxKind.SourceFile:`);
-    out.push(`            return { statements: n.statements, endOfFileToken: n.endOfFileToken, text: n.text, fileName: n.fileName, path: n.path };`);
+    for (const { node, helperName } of handWrittenCloneHelpers) {
+        for (const sk of node.allKinds()) {
+            out.push(`        case ${sk.formatTypeScript()}:`);
+        }
+        out.push(`            return ${helperName}(n);`);
+    }
     out.push(`        default:`);
     out.push(`            return undefined;`);
     out.push(`    }`);
@@ -779,7 +806,7 @@ function generateFactory(): string {
             const m = members[mi];
             const propName = api.uncapitalize(m.name);
             const paramName = tsParamName(propName);
-            const paramType = tsParamTypeFrom(m.type);
+            const paramType = tsParamTypeFrom(m.name, m.type);
             const memberType = m.type;
             const isBool = !m.isChild() && memberType.kind === "primitive" && memberType.name === "bool";
 
@@ -887,7 +914,7 @@ function generateFactory(): string {
             for (const m of v.members) {
                 const propName = api.uncapitalize(m.name);
                 const paramName = tsParamName(propName);
-                const paramType = tsParamTypeFrom(m.type);
+                const paramType = tsParamTypeFrom(m.name, m.type);
                 if (m.optional) {
                     paramParts.push(`${paramName}: ${paramType} | undefined`);
                 }
@@ -943,7 +970,7 @@ function generateFactory(): string {
             const m = updateChildMembers[mi];
             const propName = api.uncapitalize(m.name);
             const paramName = tsParamName(propName);
-            const paramType = tsParamTypeFrom(m.type);
+            const paramType = tsParamTypeFrom(m.name, m.type);
             if (m.optional) {
                 if (mi < updateLastRequiredIdx) {
                     paramParts.push(`${paramName}: ${paramType} | undefined`);
@@ -989,7 +1016,7 @@ function generateFactory(): string {
         for (const m of childMembers) {
             const propName = api.uncapitalize(m.name);
             const paramName = tsParamName(propName);
-            const paramType = tsParamTypeFrom(m.type);
+            const paramType = tsParamTypeFrom(m.name, m.type);
             if (m.optional) {
                 paramParts.push(`${paramName}: ${paramType} | undefined`);
             }
@@ -1029,10 +1056,19 @@ function generateFactory(): string {
     out.push(`}`);
     out.push(``);
 
+    out.push(`function cloneSourceFileWithChanges(source: SourceFile, statements: readonly Statement[], endOfFileToken: EndOfFile): SourceFile {`);
+    out.push(`    return new NodeObject(SyntaxKind.SourceFile, {`);
+    out.push(`        ...cloneSourceFileData(source),`);
+    out.push(`        statements: createNodeArray(statements),`);
+    out.push(`        endOfFileToken,`);
+    out.push(`    }) as unknown as SourceFile;`);
+    out.push(`}`);
+    out.push(``);
+
     // ── updateSourceFile (hand-written in schema) ──
     out.push(`export function updateSourceFile(node: SourceFile, statements: readonly Statement[], endOfFileToken: EndOfFile): SourceFile {`);
     out.push(`    return node.statements !== statements || node.endOfFileToken !== endOfFileToken`);
-    out.push(`        ? createSourceFile(statements, endOfFileToken, node.text, node.fileName, node.path)`);
+    out.push(`        ? cloneSourceFileWithChanges(node, statements, endOfFileToken)`);
     out.push(`        : node;`);
     out.push(`}`);
     out.push(``);
@@ -1058,7 +1094,6 @@ function generateIsGenerated(): string {
     const guards: { funcName: string; typeName: string; kindChecks: string[]; kindAliasConstraint?: string; }[] = [];
 
     for (const node of api.nodes()) {
-        if (node.handWritten) continue;
         if (isVariantNode(node)) continue;
 
         const typeName = node.name;
